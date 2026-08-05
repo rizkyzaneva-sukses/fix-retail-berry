@@ -2,16 +2,19 @@
 set -e
 export PATH="./node_modules/.bin:$PATH"
 
-# Load .env if exists
-if [ -f .env ]; then
-  set -a
-  . ./.env
-  set +a
+# Write .env file from runtime environment variables
+# This ensures Next.js and Prisma can read them
+if [ -n "$DATABASE_URL" ]; then
+  echo "DATABASE_URL=$DATABASE_URL" > .env
+  echo "SESSION_SECRET=$SESSION_SECRET" >> .env
+  echo "✅ .env written from runtime env vars"
+else
+  echo "⚠️ DATABASE_URL not set!"
 fi
 
 # Run prisma db push
 if [ -n "$DATABASE_URL" ]; then
-  ./node_modules/.bin/prisma db push --accept-data-loss --skip-generate || echo "DB push skipped"
+  prisma db push --accept-data-loss --skip-generate || echo "DB push skipped"
 else
   echo "WARNING: DATABASE_URL not set, skipping DB push"
 fi
