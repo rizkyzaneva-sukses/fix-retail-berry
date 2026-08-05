@@ -1,0 +1,338 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  owner
+  driver
+  sorter
+  sales
+}
+
+enum PickupStatus {
+  pending
+  received
+  cancelled
+}
+enum SaleStatus {
+  confirmed
+  shipped
+  delivered
+  cancelled
+}
+enum MovementType {
+  in_sorting
+  out_sale
+  adjustment
+  in_return
+}
+enum ShippingPayer {
+  buyer_direct
+  seller_billed
+  seller_free
+}
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  username     String   @unique
+  passwordHash String
+  role         Role     @default(driver)
+  phone        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  pickups      Pickup[]
+  sales        Sale[]
+}
+
+model Category {
+  id            Int               @id @default(autoincrement())
+  name          String            @unique
+  description   String?
+  color         String            @default("#e11d48")
+  isActive      Boolean           @default(true)
+  sortOrder     Int               @default(0)
+  shrinkagePct  Float             @default(0)
+  createdAt     DateTime          @default(now())
+  sortingDetails SortingDetail[]
+  recipeItems    ProductRecipe[]
+  movements      InventoryMovement[]
+  returnItems    ReturnItem[]
+  farmPrices     FarmCategoryPrice[]
+}
+
+model Farm {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  code      String   @unique
+  location  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  prices    FarmCategoryPrice[]
+  pickups   Pickup[]
+}
+
+model FarmCategoryPrice {
+  id            Int      @id @default(autoincrement())
+  farmId        Int
+  farm          Farm     @relation(fields: [farmId], references: [id])
+  categoryId    Int
+  category      Category @relation(fields: [categoryId], references: [id])
+  pricePerKg    Float
+  effectiveFrom DateTime @db.Date
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  @@unique([farmId, categoryId, effectiveFrom])
+  @@index([farmId, categoryId, effectiveFrom])
+}
+
+model Pickup {
+  id          Int          @id @default(autoincrement())
+  driverId    Int
+  driver      User         @relation(fields: [driverId], references: [id])
+  farmId      Int
+  farm        Farm         @relation(fields: [farmId], references: [id])
+  pickupDate  DateTime     @db.Date
+  trayCount   Int
+  photoUrl    String?
+  sjNumber    String       @unique
+  barcodeData String?
+  notes       String?
+  status      PickupStatus @default(pending)
+  createdAt   DateTime     @default(now())
+  receiving   Receiving?
+  @@index([farmId, pickupDate])
+}
+
+model Receiving {
+  id             Int      @id @default(autoincrement())
+  pickupId       Int      @unique
+  pickup         Pickup   @relation(fields: [pickupId], references: [id])
+  totalKg        Float
+  checkedById    Int?
+  checkedByName  String?
+  checkDate      DateTime @default(now())
+  notes          String?
+  isBalanced     Boolean  @default(false)
+  photoUrl       String?
+  totalCost      Float    @default(0)
+  createdAt      DateTime @default(now())
+  sortingDetails SortingDetail[]
+}
+
+model SortingDetail {
+  id          Int       @id @default(autoincrement())
+  receivingId Int
+  receiving   Receiving @relation(fields: [receivingId], references: [id], onDelete: Cascade)
+  categoryId  Int
+  category    Category  @relation(fields: [categoryId], references: [id])
+  kg          Float
+  percentage  Float?
+  unitCost    Float     @default(0)
+  totalCost   Float     @default(0)
+}
+
+model InventoryMovement {
+  id           Int          @id @default(autoincrement())
+  categoryId   Int
+  category     Category     @relation(fields: [categoryId], references: [id])
+  movementType MovementType
+  qtyKg        Float
+  refType      String?
+  refId        Int?
+  notes        String?
+  createdAt    DateTime     @default(now())
+  createdById  Int?
+  createdByName String?
+  @@index([categoryId])
+  @@index([refType, refId])
+}
+
+model Product {
+  id             Int             @id @default(autoincrement())
+  name           String          @unique
+  productType    String          @default("pure")
+  basePrice      Float           @default(0)
+  description    String?
+  imageUrl       String?
+  approvalStatus ApprovalStatus  @default(approved)
+  isActive       Boolean         @default(true)
+  createdBy      String?
+  createdAt      DateTime        @default(now())
+  recipes        ProductRecipe[]
+  saleItems      SaleItem[]
+}
+
+model ProductRecipe {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+  ratio      Float
+  @@unique([productId, categoryId])
+}
+
+model Customer {
+  id                 Int      @id @default(autoincrement())
+  name               String
+  phone              String?
+  address            String?
+  notes              String?
+  defaultDiscountPct Float    @default(0)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  sales              Sale[]
+}
+
+model Sale {
+  id             Int           @id @default(autoincrement())
+  customerId     Int
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  saleDate       DateTime      @db.Date
+  subtotal       Float         @default(0)
+  discountAmount Float         @default(0)
+  shippingMethod String?
+  shippingPayer  ShippingPayer @default(buyer_direct)
+  shippingCost   Float         @default(0)
+  totalAmount    Float         @default(0)
+  totalCogs      Float         @default(0)
+  status         SaleStatus    @default(confirmed)
+  notes          String?
+  invoiceNumber  String?       @unique
+  createdById    Int?
+  createdByUser  User?         @relation(fields: [createdById], references: [id])
+  createdAt      DateTime      @default(now())
+  shippedAt      DateTime?
+  items          SaleItem[]
+  returns        ReturnOrder[]
+  expenses       Expense[]
+  @@index([saleDate, status])
+}
+
+model SaleItem {
+  id        Int     @id @default(autoincrement())
+  saleId    Int
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  qtyKg     Float
+  unitPrice Float
+  subtotal  Float
+}
+
+model Expense {
+  id                 Int             @id @default(autoincrement())
+  expenseDate        DateTime        @db.Date
+  categoryId         Int
+  category           ExpenseCategory @relation(fields: [categoryId], references: [id])
+  amount             Float
+  description        String?
+  relatedSaleId      Int?
+  relatedSale        Sale?           @relation(fields: [relatedSaleId], references: [id])
+  relatedReceivingId Int?
+  isAutoGenerated    Boolean         @default(false)
+  createdById        Int?
+  createdByName      String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  @@index([expenseDate])
+}
+
+model ExpenseCategory {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  icon      String    @default("💰")
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  isSystem  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  expenses  Expense[]
+}
+
+model Setting {
+  key   String @id
+  value String?
+}
+
+model ActivityLog {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  userId     Int?
+  username   String?
+  userName   String?
+  role       String?
+  action     String
+  entityType String?
+  entityId   Int?
+  summary    String
+  detail     Json?
+  @@index([createdAt])
+  @@index([action])
+}
+
+model ChangeRequest {
+  id              Int            @id @default(autoincrement())
+  entityType      String
+  entityId        Int
+  requestType     String
+  payload         Json?
+  reason          String
+  status          ApprovalStatus @default(pending)
+  requestedById   Int
+  requestedByName String?
+  reviewedById    Int?
+  reviewedByName  String?
+  reviewNote      String?
+  createdAt       DateTime       @default(now())
+  reviewedAt      DateTime?
+}
+
+model ReturnOrder {
+  id             Int            @id @default(autoincrement())
+  saleId         Int
+  sale           Sale           @relation(fields: [saleId], references: [id])
+  returnDate     DateTime       @db.Date
+  reason         String
+  status         ApprovalStatus @default(pending)
+  createdById    Int?
+  createdByName  String?
+  reviewedById   Int?
+  reviewedByName String?
+  reviewNote     String?
+  createdAt      DateTime       @default(now())
+  reviewedAt     DateTime?
+  items          ReturnItem[]
+}
+
+model ReturnItem {
+  id          Int         @id @default(autoincrement())
+  returnId    Int
+  returnOrder ReturnOrder @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  categoryId  Int
+  category    Category    @relation(fields: [categoryId], references: [id])
+  qtyKg       Float
+  notes       String?
+}
+
+model Permission {
+  id         Int     @id @default(autoincrement())
+  role       Role
+  module     String
+  canView    Boolean @default(false)
+  canCreate  Boolean @default(false)
+  canEdit    Boolean @default(false)
+  canDelete  Boolean @default(false)
+  canApprove Boolean @default(false)
+  @@unique([role, module])
+}
