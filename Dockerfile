@@ -4,15 +4,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 RUN npm ci
-RUN npx prisma generate
 
 # ---- Build ----
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN echo 'DATABASE_URL=postgresql://postgres:***@creative_fix-retail-berry-db:5432/fix_retail_berry' > .env
-RUN echo 'SESSION_SECRET=strawberry-prod-secret-2026' >> .env
 RUN npx prisma generate
 RUN npm run build
 
@@ -31,7 +28,6 @@ RUN chown -R nextjs:nodejs /app/node_modules/.prisma
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/.env ./.env
 COPY start.sh ./
 RUN chmod +x start.sh
 USER nextjs
