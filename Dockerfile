@@ -10,6 +10,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ARG CACHEBUST=1
 RUN npx prisma generate
 RUN npm run build
 
@@ -30,7 +31,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY start.sh ./
 RUN chmod +x start.sh
 
-# Create .env as root and make it writable by nextjs
+# Create .env as root so nextjs user can overwrite it at runtime
 RUN echo "DATABASE_URL=placeholder" > .env && echo "SESSION_SECRET=placeholder" >> .env && chown nextjs:nodejs .env && chown -R nextjs:nodejs /app/node_modules/.prisma
 
 USER nextjs
