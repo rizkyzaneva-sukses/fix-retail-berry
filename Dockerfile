@@ -1,8 +1,6 @@
 # ---- Dependencies ----
 FROM node:20-alpine AS deps
 WORKDIR /app
-ARG DATABASE_URL
-ARG SESSION_SECRET
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 RUN npm ci
@@ -11,12 +9,10 @@ RUN npx prisma generate
 # ---- Build ----
 FROM node:20-alpine AS builder
 WORKDIR /app
-ARG DATABASE_URL
-ARG SESSION_SECRET
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN echo "DATABASE_URL=$DATABASE_URL" > .env
-RUN echo "SESSION_SECRET=$SESSION_SECRET" >> .env
+RUN echo 'DATABASE_URL=postgresql://postgres:***@creative_fix-retail-berry-db:5432/fix_retail_berry' > .env
+RUN echo 'SESSION_SECRET=strawberry-prod-secret-2026' >> .env
 RUN npx prisma generate
 RUN npm run build
 
@@ -26,9 +22,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache openssl
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
-
-ARG DATABASE_URL
-ARG SESSION_SECRET
 
 COPY prisma ./prisma/
 COPY package.json package-lock.json ./
